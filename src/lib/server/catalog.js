@@ -27,11 +27,16 @@ export function normalizeProduct(detail) {
     };
   });
   if (!variants.length) return null;
+  const productName = String(product.name || 'Unnamed product');
+  const category = /sticker/i.test(productName) ? 'Stickers'
+    : /hoodie/i.test(productName) ? 'Hoodies'
+    : /tee|t-shirt|shirt/i.test(productName) ? 'Tees'
+    : null;
   return {
     id: Number(product.id),
-    name: String(product.name || 'Unnamed product'),
+    name: productName,
     description: '',
-    category: null,
+    category,
     source: 'printful',
     image: product.thumbnail_url || variants[0].image,
     label: 'PRINTFUL',

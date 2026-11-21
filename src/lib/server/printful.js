@@ -25,16 +25,24 @@ async function printful(path, options = {}) {
 }
 
 export async function getPrintfulProducts() {
-  // Deliberately capped to a small initial product collection; expand pagination before >24 products.
-  const summaries = await printful('/store/products?limit=24&offset=0&status=synced');
+  // Paginated catalog: loads every synced product (100 per page, safety cap 200).
   const results = [];
-  for (let i = 0; i < summaries.length; i += 4) {
-    const group = summaries.slice(i, i + 4);
-    const details = await Promise.all(group.map(p => printful(`/store/products/${p.id}`)));
-    for (const detail of details) {
-      const product = normalizeProduct(detail);
-      if (product) results.push(product);
+  const limit = 100;
+  const maxProducts = 200;
+  let offset = 0;
+  while (offset < maxProducts) {
+    const summaries = await printful(`/store/products?limit=${limit}&offset=${offset}&status=synced`);
+    if (!Array.isArray(summaries) || summaries.length === 0) break;
+    for (let i = 0; i < summaries.length; i += 4) {
+      const group = summaries.slice(i, i + 4);
+      const details = await Promise.all(group.map(p => printful(`/store/products/${p.id}`)));
+      for (const detail of details) {
+        const product = normalizeProduct(detail);
+        if (product) results.push(product);
+      }
     }
+    if (summaries.length < limit) break;
+    offset += limit;
   }
   return results;
 }
