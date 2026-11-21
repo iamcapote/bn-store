@@ -1,4 +1,11 @@
 /** Pure normalization functions shared by checkout validation and tests. */
+
+const CATEGORY_COPY = {
+  Tees: 'Certified organic, certified unhinged. 100% ring-spun organic cotton (GOTS + OEKO-TEX 100, PETA-approved vegan), soft 5.3 oz single jersey, medium fit. Stanley/Stella blank, printed to order in Black or White, S–3XL. Heads up: runs a size small for US — when in doubt, go bigger. Bigger is the BASED way.',
+  Hoodies: 'Heavyweight organic armor for the nut ahead of schedule. 350 g/m² of GOTS-certified organic cotton, double-layered hood for maximum lurk, pouch pocket rated for emergency trail mix, regular fit S–2XL. OEKO-TEX 100, PETA-vegan, printed to order. Runs a size small for US — size up or live with regret.',
+  Stickers: 'Slap-grade vinyl for surfaces that deserve better. High-opacity, bubble-free, 95µ durable adhesive film, kiss-cut in four sizes — 3″, 4″, 5.5″, and the 15″×3.75″ laptop banner. Impossible to see through, hard to argue with. Clean the surface first — even nuts have standards.'
+};
+function describeProduct(category) { return CATEGORY_COPY[category] || 'Printed to order by the Orchard. 100% BASED.'; }
 export function usdCents(value) {
   const raw = String(value ?? '').trim();
   if (!/^\d{1,6}(\.\d{1,2})?$/.test(raw)) return null;
@@ -11,10 +18,11 @@ export function normalizeProduct(detail) {
   if (!product || product.is_ignored) return null;
   const variants = (detail.sync_variants ?? []).filter(v => v.synced && !v.is_ignored &&
     v.currency === 'USD' && usdCents(v.retail_price) !== null).map(v => {
-    const option = String(v.name || '').split(' - ').slice(1).join(' - ');
+    // Structured size/color first (sync variants carry both); name-parsing only as fallback.
+    const option = String(v.name || '').split(/ [-–—] /).slice(1).join(' - ');
     const chunks = option.split(' / ').map(s => s.trim()).filter(Boolean);
-    const size = chunks.at(-1) || 'One size';
-    const color = chunks.length > 1 ? chunks.slice(0, -1).join(' / ') : 'Default';
+    const size = v.size || chunks.at(-1) || 'One size';
+    const color = v.color || (chunks.length > 1 ? chunks.slice(0, -1).join(' / ') : 'Default');
     const image = (v.files || []).find(f => f.type === 'preview' && f.preview_url)?.preview_url
       || (v.files || []).find(f => f.preview_url)?.preview_url
       || null;
@@ -35,7 +43,7 @@ export function normalizeProduct(detail) {
   return {
     id: Number(product.id),
     name: productName,
-    description: '',
+    description: describeProduct(category),
     category,
     source: 'printful',
     image: product.thumbnail_url || variants[0].image,
