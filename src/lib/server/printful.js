@@ -24,8 +24,12 @@ async function printful(path, options = {}) {
   return payload.result;
 }
 
+const catalogCache = { data: null, expires: 0 };
+const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
+
 export async function getPrintfulProducts() {
-  // Paginated catalog: loads every synced product (100 per page, safety cap 200).
+  // Cached, paginated catalog: every synced product, tolerant of single-product failures.
+  if (catalogCache.data && Date.now() < catalogCache.expires) return catalogCache.data;
   const results = [];
   const limit = 100;
   const maxProducts = 200;
@@ -33,16 +37,21 @@ export async function getPrintfulProducts() {
   while (offset < maxProducts) {
     const summaries = await printful(`/store/products?limit=${limit}&offset=${offset}&status=synced`);
     if (!Array.isArray(summaries) || summaries.length === 0) break;
-    for (let i = 0; i < summaries.length; i += 4) {
-      const group = summaries.slice(i, i + 4);
-      const details = await Promise.all(group.map(p => printful(`/store/products/${p.id}`)));
-      for (const detail of details) {
-        const product = normalizeProduct(detail);
+    for (let i = 0; i < summaries.length; i += 8) {
+      const group = summaries.slice(i, i + 8);
+      const details = await Promise.allSettled(group.map(p => printful(`/store/products/${p.id}`)));
+      for (const outcome of details) {
+        if (outcome.status !== 'fulfilled') continue; // skip a failed product, keep the catalog alive
+        const product = normalizeProduct(outcome.value);
         if (product) results.push(product);
       }
     }
     if (summaries.length < limit) break;
     offset += limit;
+  }
+  if (results.length) {
+    catalogCache.data = results;
+    catalogCache.expires = Date.now() + CATALOG_CACHE_TTL_MS;
   }
   return results;
 }
