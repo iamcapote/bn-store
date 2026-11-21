@@ -34,6 +34,7 @@ export async function getPrintfulProducts() {
   const limit = 100;
   const maxProducts = 200;
   let offset = 0;
+  let failures = 0; // count failed detail fetches; only complete catalogs get cached
   while (offset < maxProducts) {
     const summaries = await printful(`/store/products?limit=${limit}&offset=${offset}&status=synced`);
     if (!Array.isArray(summaries) || summaries.length === 0) break;
@@ -41,7 +42,7 @@ export async function getPrintfulProducts() {
       const group = summaries.slice(i, i + 8);
       const details = await Promise.allSettled(group.map(p => printful(`/store/products/${p.id}`)));
       for (const outcome of details) {
-        if (outcome.status !== 'fulfilled') continue; // skip a failed product, keep the catalog alive
+        if (outcome.status !== 'fulfilled') { failures += 1; continue; } // skip a failed product, keep the catalog alive
         const product = normalizeProduct(outcome.value);
         if (product) results.push(product);
       }
@@ -49,7 +50,7 @@ export async function getPrintfulProducts() {
     if (summaries.length < limit) break;
     offset += limit;
   }
-  if (results.length) {
+  if (results.length && failures === 0) { // cache only fully-fetched catalogs; partial loads retry next visit
     catalogCache.data = results;
     catalogCache.expires = Date.now() + CATALOG_CACHE_TTL_MS;
   }
